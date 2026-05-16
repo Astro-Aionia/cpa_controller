@@ -1,0 +1,55 @@
+{
+    "Host": "127.0.0.1",
+    "Port": 50001,
+    "Laser": false,
+    "EShutter": false,
+    "PShutter": false,
+    "Current A": {
+        "Read": 0.0,
+        "Set": 0.0
+    },
+    "Current B": {
+        "Read": 0.0,
+        "Set": 0.0
+    },
+    "Temperature A": {
+        "Read": 0.0,
+        "Set": 0.0
+    },
+    "Temperature B": {
+        "Read": 0.0,
+        "Set": 0.0
+    },
+    "Puckel Cell": {
+        "A": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        },
+        "B": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        },
+        "C": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        },
+        "D": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        },
+        "E": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        },
+        "F": {
+            "Enabled": false,
+            "Value": 0.0,
+            "Increment": 10.0
+        }
+    }
+}
