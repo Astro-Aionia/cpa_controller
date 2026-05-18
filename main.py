@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow
 from channel import Ui_Channel
 from mainwindow import Ui_MainWindow
 
@@ -8,6 +8,7 @@ from remote import RemoteCPA
 import sys
 from functools import wraps
 import json
+import requests
 
 class LabConfig:
     def __init__(self):
@@ -21,13 +22,15 @@ class LabConfig:
             func(*args, **kwargs)
             with open("ui_parameters.json") as f:
                 json.dump(self.config, f, indent=4)
+        return wrapper
 
 def ignore_connection_error(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            return func(*args, **kwargs)
-        except ConnectionError:
+            res = func(*args, **kwargs)
+            return res
+        except requests.exceptions.ConnectionError:
             print(f"Connection error in {func.__name__}, ignoring.")
             return None
     return wrapper
@@ -43,8 +46,6 @@ class DelayChannel(QWidget, Ui_Channel):
         update_config = self.lcfg.update_config
         self.remote = remote
 
-        self.update_ui()
-
         @ignore_connection_error
         @update_config
         @self.update_ui
@@ -55,7 +56,6 @@ class DelayChannel(QWidget, Ui_Channel):
             else:
                 self.remote.apiput(f"/RUN/{self.channel}/", "0")
                 self.channel_config["Enalbed"] = True
-            self.update_ui()
 
         self.channelSwitchButton.clicked.connect(switch_channel)
 
@@ -76,7 +76,7 @@ class DelayChannel(QWidget, Ui_Channel):
             delay_increment_to_set = float(self.delayIntervalEdit.text())
             self.channel_config["Increment"] = delay_increment_to_set
 
-        self.delayIncrementSetButton.clicked.connect(set_delay_increment)
+        self.delayIntervalEdit.editingFinished.connect(set_delay_increment)
 
         @ignore_connection_error
         @update_config
@@ -99,11 +99,10 @@ class DelayChannel(QWidget, Ui_Channel):
             self.remote.apiput(f"/DLY/{self.channel}/Delay/", str_to_sent)
             rc = self.remote.apiget(f"/DLY/{self.channel}/Delay/")
             self.channel_config["Value"] = rc["DLY"]
-            self.update_ui()
             
         self.delayDecreaseButton.clicked.connect(delay_decrease)
 
-    def update_ui(func):
+    def update_ui(self, func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             func(*args, **kwargs)
@@ -118,19 +117,19 @@ class DelayChannel(QWidget, Ui_Channel):
             self.delayIntervalEdit.setText(str(self.channel_config["Increment"]))
         return wrapper
 
-class MainWindow(QWidget, Ui_MainWindow):
+class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, lcfg: LabConfig):
         super().__init__()
         self.setupUi(self)
         self.lcfg = lcfg
         self.remote = RemoteCPA(host=self.lcfg.config["Host"], port=self.lcfg.config["Port"])
         update_config = self.lcfg.update_config
-        self.channels = []
+        self.channels = [None, None, None, None, None, None]
 
         # setup channels
         widgetlist = [self.widget_A, self.widget_B, self.widget_C, self.widget_D, self.widget_E, self.widget_F]
         for i, channel in enumerate(['A', 'B', 'C', 'D', 'E', 'F']):
-            self.channels[i] = DelayChannel(channel=channel, config=self.lcfg, remote=self.remote)
+            self.channels[i] = DelayChannel(channel=channel, lcfg=self.lcfg, remote=self.remote)
             b = QtWidgets.QGridLayout(widgetlist[i])
             b.addWidget(self.channels[i])
 
@@ -192,7 +191,7 @@ class MainWindow(QWidget, Ui_MainWindow):
             rc = self.remote.apiget("/CUS")
             self.lcfg.config["Current A"]["Set"] = rc["CUS"]
 
-        self.CARButton.clicked.connect(read_current_A)
+        self.CARButton.clicked.connect(set_current_A)
 
         @ignore_connection_error
         @update_config
@@ -218,7 +217,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         @ignore_connection_error
         @update_config
         @self.update_ui
-        def read_temperature_A(button_status: bool):
+        def read_temperature_A(button_status: bool = False):
             rc = self.remote.apiget("/SHA/")
             self.lcfg.config["Temperature A"]["Read"] = rc["SHA"]
 
@@ -227,7 +226,7 @@ class MainWindow(QWidget, Ui_MainWindow):
         @ignore_connection_error
         @update_config
         @self.update_ui
-        def set_temperature_A(button_status: bool):
+        def set_temperature_A(button_status: bool = False):
             value_to_set = float(self.CASEdit.text())
             str_to_sent = str(value_to_set*10)
             self.remote.apiput("/SHA/", value=str_to_sent)
@@ -257,7 +256,7 @@ class MainWindow(QWidget, Ui_MainWindow):
 
         self.TBRButton.clicked.connect(set_temperature_B)
 
-    def update_ui(func):
+    def update_ui(self, func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             func(*args, **kwargs)

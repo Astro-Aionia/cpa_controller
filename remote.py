@@ -18,7 +18,7 @@ class RemoteCPA:
             except requests.exceptions.ConnectionError as err:
                 print(err)
         print(f"Failed to connect to CPA API after {self.max_retries} attempts.")
-        raise requests.exceptions.ConnectionErrorquests
+        raise requests.exceptions.ConnectionError
     
     def apiput(self, command, value):
         for i in range(self.max_retries):

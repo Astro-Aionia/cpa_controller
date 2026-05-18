@@ -1,6 +1,6 @@
 {
     "Host": "127.0.0.1",
-    "Port": 50001,
+    "Port": 49900,
     "Laser": false,
     "EShutter": false,
     "PShutter": false,

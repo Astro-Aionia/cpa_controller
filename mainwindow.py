@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'c:\Users\Aionia\Python\cpa_controller\mainwindow.ui'
+# Form implementation generated from reading ui file 'c:\Users\zhenggroup\Python\cpa_controller\mainwindow.ui'
 #
 # Created by: PyQt6 UI code generator 6.4.2
 #
