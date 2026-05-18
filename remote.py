@@ -37,6 +37,7 @@ if __name__ == "__main__":
 
     # rc = remote.apiput(command="/CUR/", value="0010")
 
-    rc = remote.apiget("/SHB/")
+    rc = remote.apiput("/CUR/", value="0000")
+    rc = remote.apiput("/SHU/", value='0')
 
     print(rc)

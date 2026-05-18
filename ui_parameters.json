@@ -1,54 +1,54 @@
 {
     "Host": "127.0.0.1",
     "Port": 49900,
-    "Laser": false,
+    "Laser": true,
     "EShutter": false,
     "PShutter": false,
     "Current A": {
-        "Read": 0.0,
-        "Set": 0.0
+        "Read": 0,
+        "Set": 0
     },
     "Current B": {
-        "Read": 0.0,
-        "Set": 0.0
+        "Read": 0,
+        "Set": 0
     },
     "Temperature A": {
-        "Read": 0.0,
-        "Set": 0.0
+        "Read": 45.79,
+        "Set": 45.8
     },
     "Temperature B": {
-        "Read": 0.0,
-        "Set": 0.0
+        "Read": 40.8,
+        "Set": 40.8
     },
     "Puckel Cell": {
         "A": {
-            "Enabled": false,
-            "Value": 0.0,
-            "Increment": 10.0
+            "Enabled": true,
+            "Value": 514.0,
+            "Increment": 1.0
         },
         "B": {
-            "Enabled": false,
-            "Value": 0.0,
+            "Enabled": true,
+            "Value": 810.0,
             "Increment": 10.0
         },
         "C": {
-            "Enabled": false,
-            "Value": 0.0,
+            "Enabled": true,
+            "Value": 3745.0,
             "Increment": 10.0
         },
         "D": {
-            "Enabled": false,
-            "Value": 0.0,
+            "Enabled": true,
+            "Value": 4133.5,
             "Increment": 10.0
         },
         "E": {
-            "Enabled": false,
-            "Value": 0.0,
+            "Enabled": true,
+            "Value": 3706.0,
             "Increment": 10.0
         },
         "F": {
-            "Enabled": false,
-            "Value": 0.0,
+            "Enabled": true,
+            "Value": 4069.5,
             "Increment": 10.0
         }
     }
