@@ -61,10 +61,10 @@ class DelayChannel(QWidget, Ui_Channel):
         @self.update_ui
         def switch_channel(button_status: bool):
             if self.channel_config["Enabled"]:
-                self.remote.apiput(f"/RUN/{self.channel}/", value="1")
+                self.remote.apiput(f"/settings/RUN/{self.channel}/", value="1")
                 self.channel_config["Enabled"] = False
             else:
-                self.remote.apiput(f"/RUN/{self.channel}/", value="0")
+                self.remote.apiput(f"/settings/RUN/{self.channel}/", value="0")
                 self.channel_config["Enabled"] = True
 
         self.channelSwitchButton.clicked.connect(switch_channel)
@@ -75,7 +75,7 @@ class DelayChannel(QWidget, Ui_Channel):
         def set_delay(button_status: bool):
             delay_to_set = float(self.delayEdit.text())
             str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/DLY/{self.channel}/", str_to_sent)
+            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
             # rc = self.remote.apiget(f"/DLY/{self.channel}/")
             self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
 
@@ -94,7 +94,7 @@ class DelayChannel(QWidget, Ui_Channel):
         def delay_increase(button_status: bool):
             delay_to_set = self.channel_config["Value"] + self.channel_config["Increment"]
             str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/DLY/{self.channel}/", str_to_sent)
+            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
             # rc = self.remote.apiget(f"/DLY/{self.channel}/")
             self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
 
@@ -106,7 +106,7 @@ class DelayChannel(QWidget, Ui_Channel):
         def delay_decrease(button_status: bool):
             delay_to_set = self.channel_config["Value"] - self.channel_config["Increment"]
             str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/DLY/{self.channel}/", str_to_sent)
+            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
             # rc = self.remote.apiget(f"/DLY/{self.channel}/")
             self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
             
@@ -170,10 +170,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         @self.update_ui
         def laser_switch(button_status: bool):
             if self.lcfg.config["Laser"]:
-                self.remote.apiput("/LSR/0")
+                self.remote.apiput("/settings/LSR/0")
                 self.lcfg.config["Laser"] = False
             else:
-                self.remote.apiput("/LSR/1")
+                self.remote.apiput("/settings/LSR/1")
                 self.lcfg.config["Laser"] = True
             
         self.laserButton.clicked.connect(laser_switch)
@@ -183,10 +183,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         @self.update_ui
         def e_shutter_switch(button_status: bool):
             if self.lcfg.config["EShutter"]:
-                self.remote.apiput("/SHU/", value='0')
+                self.remote.apiput("/settings/SHU/", value='0')
                 self.lcfg.config["EShutter"] = False
             else:
-                self.remote.apiput("/SHU/", value='1')
+                # self.remote.apiput("/settings/SHU/", value='1')
+                self.remote.apiget("/laser_on/")
                 self.lcfg.config["EShutter"] = True
 
         self.EShutterButton.clicked.connect(e_shutter_switch)
@@ -196,10 +197,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         @self.update_ui
         def p_shutter_switch(button_status: bool):
             if self.lcfg.config["PShutter"]:
-                self.remote.apiput("/THS/", value='0')
+                self.remote.apiput("/settings/TSH/", value='0')
                 self.lcfg.config["PShutter"] = False
             else:
-                self.remote.apiput("/THS/", value='1')
+                self.remote.apiput("/settings/TSH/", value='1')
                 self.lcfg.config["PShutter"] = True
 
         self.PShutterButton.clicked.connect(p_shutter_switch)
@@ -208,7 +209,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         @update_config
         @self.update_ui
         def read_current_A(button_status: bool):
-            rc = self.remote.apiget("/CUR/")
+            rc = self.remote.apiget("/settings/CUR/")
             self.lcfg.config["Current A"]["Read"] = rc["CUR"]
 
         self.CARButton.clicked.connect(read_current_A)
@@ -219,17 +220,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def set_current_A(button_status: bool):
             value_to_set = float(self.CASEdit.text())
             str_to_sent = str(int(value_to_set*10))
-            rc = self.remote.apiput("/CUR/", value=str_to_sent)
-            # rc = self.remote.apiget("/CUS/")
-            self.lcfg.config["Current A"]["Set"] = rc["CUS"]
+            # rc = self.remote.apiput("/settings/CUR/", value=str_to_sent)
+            self.remote.apiget(f"/set_current/1/{str_to_sent}")
+            rc = self.remote.apiget("/settings/CUS/")
+            self.lcfg.config["Current A"]["Set"] = float(rc["CUS"])/10
 
-        self.CARButton.clicked.connect(set_current_A)
+        self.CASButton.clicked.connect(set_current_A)
 
         @ignore_connection_error
         @update_config
         @self.update_ui
         def read_current_B(button_status: bool):
-            rc = self.remote.apiget("/C2R/")
+            rc = self.remote.apiget("/settings/C2R/")
             self.lcfg.config["Current B"]["Read"] = rc["C2R"]
 
         self.CBRButton.clicked.connect(read_current_B)
@@ -240,17 +242,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def set_current_B(button_status: bool):
             value_to_set = float(self.CBSEdit.text())
             str_to_sent = str(int(value_to_set*10))
-            rc = self.remote.apiput("/C2R/", value=str_to_sent)
-            # rc = self.remote.apiget("/C2S")
-            self.lcfg.config["Current B"]["Set"] = rc["C2S"]
+            # rc = self.remote.apiput("/settings/C2R/", value=str_to_sent)
+            self.remote.apiget(f"/set_current/1/{str_to_sent}")
+            rc = self.remote.apiget("/settings/C2S")
+            self.lcfg.config["Current B"]["Set"] = float(rc["C2S"])/10
 
-        self.CBRButton.clicked.connect(set_current_B)
+        self.CBSButton.clicked.connect(set_current_B)
 
         @ignore_connection_error
         @update_config
         @self.update_ui
         def read_temperature_A(button_status: bool = False):
-            rc = self.remote.apiget("/SHA/")
+            rc = self.remote.apiget("/settings/SHA/")
             self.lcfg.config["Temperature A"]["Read"] = rc["SHA"]
 
         self.TARButton.clicked.connect(read_temperature_A)
@@ -261,17 +264,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def set_temperature_A(button_status: bool = False):
             value_to_set = float(self.CASEdit.text())
             str_to_sent = str(value_to_set*10)
-            rc = self.remote.apiput("/SHA/", value=str_to_sent)
+            rc = self.remote.apiput("/settings/SHA/", value=str_to_sent)
             # rc = self.remote.apiget("/SHA")
             self.lcfg.config["Temperature A"]["Set"] = rc["SHA"]
 
-        self.TARButton.clicked.connect(set_temperature_A)
+        self.TASButton.clicked.connect(set_temperature_A)
 
         @ignore_connection_error
         @update_config
         @self.update_ui
         def read_temperature_B(button_status: bool):
-            rc = self.remote.apiget("/SHB/")
+            rc = self.remote.apiget("/settings/SHB/")
             self.lcfg.config["Temperature B"]["Read"] = rc["SHB"]
 
         self.TBRButton.clicked.connect(read_temperature_B)
@@ -282,11 +285,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def set_temperature_B(button_status: bool):
             value_to_set = float(self.CBSEdit.text())
             str_to_sent = str(value_to_set*10)
-            rc = self.remote.apiput("/SHB/", value=str_to_sent)
+            rc = self.remote.apiput("/settings/SHB/", value=str_to_sent)
             # rc = self.remote.apiget("/SHB")
             self.lcfg.config["Temperature B"]["Set"] = rc["SHB"]
 
-        self.TBRButton.clicked.connect(set_temperature_B)
+        self.TBSButton.clicked.connect(set_temperature_B)
 
     def update_ui(self, func):
         @wraps(func)
@@ -303,7 +306,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.lcfg.config["PShutter"]:
                 self.PShutterButton.setStyleSheet("color: green;")
             else:
-                self.EShutterButton.setStyleSheet("color: black;")
+                self.PShutterButton.setStyleSheet("color: black;")
             self.CAREdit.setText(str(self.lcfg.config["Current A"]["Read"]))
             self.CASEdit.setText(str(self.lcfg.config["Current A"]["Set"]))
             self.CBREdit.setText(str(self.lcfg.config["Current B"]["Read"]))

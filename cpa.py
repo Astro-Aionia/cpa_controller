@@ -136,6 +136,8 @@ class CPA:
                while self.get_parameter(param_name=cmd) < current:
                    self.set_parameter(param_name=cmd, value=self.get_parameter(param_name=cmd) + 1)
                    time.sleep(5)  # Adjust the sleep time as needed
+        
+        self.get_parameter(param_name=cmd[:2]+'S')
     
     # @remote_error
     def laser_on_safely(self):

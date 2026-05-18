@@ -38,8 +38,8 @@ def disconnect():
     res = json.dumps(res)
     return Response(res, status=200, mimetype='application/json')
 
-@app.route("/<param_name>/", methods=['GET', 'PUT'])
-@app.route("/<param_name>/<channel>/", methods=['GET', 'PUT'])
+@app.route("/settings/<param_name>/", methods=['GET', 'PUT'])
+@app.route("/settings/<param_name>/<channel>/", methods=['GET', 'PUT'])
 def handle_parameter(param_name, channel=''):
     if param_name not in VALID_PARAMS:
         res = dict()
@@ -82,7 +82,7 @@ def set_current_safely(laser, value):
     res['message'] = f"Laser {laser} current set to {value} safely."
     res['version'] = cpa.parameters["VER"]
     if laser == 1:
-        res['CRS'] = cpa.parameters["CRS"]
+        res['CUS'] = cpa.parameters["CUS"]
     elif laser == 2:
         res['C2S'] = cpa.parameters["C2S"]
     res = json.dumps(res)

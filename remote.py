@@ -35,9 +35,9 @@ class RemoteCPA:
 if __name__ == "__main__":
     remote = RemoteCPA(host="127.0.0.1", port=49900)
 
-    # rc = remote.apiput(command="/CUR/", value="0010")
-
-    rc = remote.apiput("/CUR/", value="0000")
-    rc = remote.apiput("/SHU/", value='0')
+    # rc = remote.apiget(command="/laser_on/")
+    # rc = remote.apiget(command="/set_current/1/0005")
+    rc = remote.apiput(command="/settings/SHU", value='0')
+    # rc = remote.apiget(command="/laser_on/")
 
     print(rc)
