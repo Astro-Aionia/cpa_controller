@@ -32,3 +32,11 @@ class RemoteCPA:
         print(f"Failed to connect to CPA API after {self.max_retries} attempts.")
         raise requests.exceptions.ConnectionError
     
+if __name__ == "__main__":
+    remote = RemoteCPA(host="127.0.0.1", port=49900)
+
+    # rc = remote.apiput(command="/CUR/", value="0010")
+
+    rc = remote.apiget("/SHB/")
+
+    print(rc)

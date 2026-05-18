@@ -181,4 +181,6 @@ cpa = CPA(port=comport)
 
 if __name__ == "__main__":
 
-    cpa.set_parameter(param_name="QRF", value="0")
+    cpa.set_current_safely(laser=2, current=0)
+    cpa.set_parameter(param_name="SHU", value='0')
+   
