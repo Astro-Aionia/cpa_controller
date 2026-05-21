@@ -4,8 +4,23 @@ from flask import Flask, Response, request
 class CPAEmulator:
     def __init__(self):
         self.parameters = dict()
-        with open('cpa_parameters.json', 'r') as f:
+        with open('../cpa_parameters.json', 'r') as f:
             self.parameters = json.load(f)
+
+    def get_parameter(self, para_name: str):
+        print(self.parameters[para_name])
+        return self.parameters[para_name]
+    
+    def set_parameter(self, para_name: str, value=None):
+        self.parameters[para_name] = value
+        print(value)
+        return value
+    
+    def open(self):
+        self.set_parameter(para_name="232", value="ON")
+
+    def close(self):
+        self.set_parameter(para_name="232", value="OFF")
 
 cpa = CPAEmulator()
 
@@ -22,12 +37,9 @@ def online():
     res = json.dumps(res)
     return Response(res, status=200, mimetype='application/json')
 
-@app.route("/favicon.ico")
-def favicon():
-    return Response(status=204)
-
 @app.route("/connect/")
 def connect():
+    cpa.open()
     res = dict()
     res['success'] = True
     res['message'] = "CPA is now in remote control mode."
@@ -38,6 +50,7 @@ def connect():
 
 @app.route("/disconnect/")
 def disconnect():
+    cpa.close()
     res = dict()
     res['success'] = True
     res['message'] = "CPA is now in local control mode."
@@ -46,8 +59,8 @@ def disconnect():
     res = json.dumps(res)
     return Response(res, status=200, mimetype='application/json')
 
-@app.route("/<param_name>/", methods=['GET', 'PUT'])
-@app.route("/<param_name>/<channel>/", methods=['GET', 'PUT'])
+@app.route("/settings/<param_name>/", methods=['GET', 'PUT'])
+@app.route("/settings/<param_name>/<channel>/", methods=['GET', 'PUT'])
 def handle_parameter(param_name, channel=''):
     if param_name not in VALID_PARAMS:
         res = dict()
@@ -59,6 +72,7 @@ def handle_parameter(param_name, channel=''):
 
     res = dict()
     if request.method == 'GET':
+        cpa.get_parameter(para_name=param_name)
         res['success'] = True
         res['message'] = f"Parameter '{param_name}' for channel '{channel}' retrieved successfully." if channel else f"Parameter '{param_name}' retrieved successfully."
         res['version'] = cpa.parameters["VER"]
@@ -72,7 +86,7 @@ def handle_parameter(param_name, channel=''):
             res = json.dumps(res)
             return Response(res, status=400, mimetype='application/json')
         else:
-            cpa.cpa.parameters[param_name] = value
+            cpa.set_parameter(para_name=param_name, value=value)
             res['success'] = True
             res['message'] = f"Parameter '{param_name}' for channel '{channel}' updated successfully." if channel else f"Parameter '{param_name}' updated successfully."
             res['version'] = cpa.parameters["VER"]

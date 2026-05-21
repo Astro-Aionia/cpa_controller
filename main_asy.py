@@ -1,5 +1,6 @@
 from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from ui.channel import Ui_Channel
 from ui.mainwindow import Ui_MainWindow
 
@@ -34,6 +35,46 @@ def ignore_connection_error(func):
             print(f"Connection error in {func.__name__}, ignoring.")
             return None
     return wrapper
+
+class AsyncExecutor(QObject):
+    started = pyqtSignal()
+    finished = pyqtSignal(object)
+    progress = pyqtSignal(int)
+    error = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.thread = QThread()
+        self.moveToThread(self.thread)
+        self.thread.start()
+
+    @pyqtSlot()
+    def execute(self, func, *args, **kwargs):
+        try:
+            self.started.emit()
+            result = func(*args, **kwargs)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+def async_execute(on_started=None,on_finished=None, on_error=None, on_progress=None):
+    def decprator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            executor = AsyncExecutor()
+
+            if on_started:
+                executor.started.connect(on_started)
+            if on_finished:
+                executor.finished.connect(on_finished)
+            if on_progress:
+                executor.progress.connect(on_progress)
+
+            executor.execute(func, args, kwargs)
+            return executor
+        
+        return wrapper
+    return decprator
 
 class DelayChannel(QWidget, Ui_Channel):
     def __init__(self, channel: str, lcfg: LabConfig, remote: RemoteCPA):
@@ -134,6 +175,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lcfg = lcfg
         self.remote = RemoteCPA(host=self.lcfg.config["Host"], port=self.lcfg.config["Port"])
         update_config = self.lcfg.update_config
+        self.update_ui = self.lcfg.update_config(self.update_ui)
         self.channels = [None, None, None, None, None, None]
 
         # setup channels
@@ -165,9 +207,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.TBREdit.setText(str(self.lcfg.config["Temperature B"]["Read"]))
         self.TBSEdit.setText(str(self.lcfg.config["Temperature B"]["Set"]))
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def laser_switch(button_status: bool):
             if self.lcfg.config["Laser"]:
                 self.remote.apiput("/settings/LSR/0")
@@ -178,9 +219,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
         self.laserButton.clicked.connect(laser_switch)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def e_shutter_switch(button_status: bool):
             if self.lcfg.config["EShutter"]:
                 self.remote.apiput("/settings/SHU/", value='0')
@@ -192,9 +232,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.EShutterButton.clicked.connect(e_shutter_switch)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def p_shutter_switch(button_status: bool):
             if self.lcfg.config["PShutter"]:
                 self.remote.apiput("/settings/TSH/", value='0')
@@ -205,18 +244,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.PShutterButton.clicked.connect(p_shutter_switch)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def read_current_A(button_status: bool):
             rc = self.remote.apiget("/settings/CUR/")
             self.lcfg.config["Current A"]["Read"] = rc["CUR"]
 
         self.CARButton.clicked.connect(read_current_A)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def set_current_A(button_status: bool):
             value_to_set = float(self.CASEdit.text())
             str_to_sent = str(int(value_to_set*10))
@@ -227,18 +264,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.CASButton.clicked.connect(set_current_A)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def read_current_B(button_status: bool):
             rc = self.remote.apiget("/settings/C2R/")
             self.lcfg.config["Current B"]["Read"] = rc["C2R"]
 
         self.CBRButton.clicked.connect(read_current_B)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def set_current_B(button_status: bool):
             value_to_set = float(self.CBSEdit.text())
             str_to_sent = str(int(value_to_set*10))
@@ -249,18 +284,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.CBSButton.clicked.connect(set_current_B)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def read_temperature_A(button_status: bool = False):
             rc = self.remote.apiget("/settings/SHA/")
             self.lcfg.config["Temperature A"]["Read"] = rc["SHA"]
 
         self.TARButton.clicked.connect(read_temperature_A)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def set_temperature_A(button_status: bool = False):
             value_to_set = float(self.CASEdit.text())
             str_to_sent = str(value_to_set*10)
@@ -270,18 +303,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.TASButton.clicked.connect(set_temperature_A)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def read_temperature_B(button_status: bool):
             rc = self.remote.apiget("/settings/SHB/")
             self.lcfg.config["Temperature B"]["Read"] = rc["SHB"]
 
         self.TBRButton.clicked.connect(read_temperature_B)
 
+        @async_execute(on_finished=lambda: self.update_ui)
         @ignore_connection_error
-        @update_config
-        @self.update_ui
         def set_temperature_B(button_status: bool):
             value_to_set = float(self.CBSEdit.text())
             str_to_sent = str(value_to_set*10)
@@ -291,31 +322,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.TBSButton.clicked.connect(set_temperature_B)
 
-    def update_ui(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            if self.lcfg.config["Laser"]:
-                self.laserButton.setStyleSheet("color: green;")
-            else:
-                self.laserButton.setStyleSheet("color: black;")
-            if self.lcfg.config["EShutter"]:
-                self.EShutterButton.setStyleSheet("color: green;")
-            else:
-                self.EShutterButton.setStyleSheet("color: black;")
-            if self.lcfg.config["PShutter"]:
-                self.PShutterButton.setStyleSheet("color: green;")
-            else:
-                self.PShutterButton.setStyleSheet("color: black;")
-            self.CAREdit.setText(str(self.lcfg.config["Current A"]["Read"]))
-            self.CASEdit.setText(str(self.lcfg.config["Current A"]["Set"]))
-            self.CBREdit.setText(str(self.lcfg.config["Current B"]["Read"]))
-            self.CBSEdit.setText(str(self.lcfg.config["Current B"]["Set"]))
-            self.TAREdit.setText(str(self.lcfg.config["Temperature A"]["Read"]))
-            self.TASEdit.setText(str(self.lcfg.config["Temperature A"]["Set"]))
-            self.TBREdit.setText(str(self.lcfg.config["Temperature B"]["Read"]))
-            self.TBSEdit.setText(str(self.lcfg.config["Temperature B"]["Set"]))
-        return wrapper
+    def update_ui(self):
+        if self.lcfg.config["Laser"]:
+            self.laserButton.setStyleSheet("color: green;")
+        else:
+            self.laserButton.setStyleSheet("color: black;")
+        if self.lcfg.config["EShutter"]:
+            self.EShutterButton.setStyleSheet("color: green;")
+        else:
+            self.EShutterButton.setStyleSheet("color: black;")
+        if self.lcfg.config["PShutter"]:
+            self.PShutterButton.setStyleSheet("color: green;")
+        else:
+            self.PShutterButton.setStyleSheet("color: black;")
+        self.CAREdit.setText(str(self.lcfg.config["Current A"]["Read"]))
+        self.CASEdit.setText(str(self.lcfg.config["Current A"]["Set"]))
+        self.CBREdit.setText(str(self.lcfg.config["Current B"]["Read"]))
+        self.CBSEdit.setText(str(self.lcfg.config["Current B"]["Set"]))
+        self.TAREdit.setText(str(self.lcfg.config["Temperature A"]["Read"]))
+        self.TASEdit.setText(str(self.lcfg.config["Temperature A"]["Set"]))
+        self.TBREdit.setText(str(self.lcfg.config["Temperature B"]["Read"]))
+        self.TBSEdit.setText(str(self.lcfg.config["Temperature B"]["Set"]))
+
 
 
 lcfg = LabConfig()

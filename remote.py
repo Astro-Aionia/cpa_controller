@@ -35,9 +35,13 @@ class RemoteCPA:
 if __name__ == "__main__":
     remote = RemoteCPA(host="127.0.0.1", port=49900)
 
+    import time
+    start_time = time.time()
     # rc = remote.apiget(command="/laser_on/")
     # rc = remote.apiget(command="/set_current/1/0005")
-    rc = remote.apiput(command="/settings/SHU", value='0')
+    rc = remote.apiget(command="/settings/DLY/A/")
     # rc = remote.apiget(command="/laser_on/")
+    end_time = time.time()
+    print(end_time-start_time)
 
     print(rc)

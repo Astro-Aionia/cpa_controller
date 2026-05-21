@@ -3,11 +3,11 @@ import serial
 import json
 from functools import wraps
 
-class CPA:
+class SafeCPA:
     def __init__(self, port, baudrate=9600, timeout=1, bit=8, parity='N', stop=1):
         self.ser = serial.Serial(port, baudrate, timeout=timeout, bytesize=bit, parity=parity, stopbits=stop)
         self.parameters = {}
-        with open('cpa_parameters.json', 'r') as f:
+        with open('../cpa_parameters.json', 'r') as f:
             self.parameters = json.load(f)
         if not self.ser.is_open:
             self.ser.open()
@@ -176,13 +176,99 @@ class CPA:
                     self.set_parameter(param_name="C2R", value=self.get_parameter(param_name="C2R") + 1)
                 time.sleep(5)  # Adjust the sleep time as needed
                 i = i + 1 
-            
+
+def handle_str(string: str):
+    if ',' in string:
+            string = string.split(',', 1)[1]
+    if all(c in '01' for c in string.strip()) and len(string.strip()) in [8, 16, 32]:  # Check if the response is a binary string of length 8, 16, or 32
+        return string
+    try:
+        return float(string) if '.' in string else int(string)
+    except ValueError:
+        return string
+
+class CPA:
+    def __init__(self, port, baudrate=9600, timeout=1, bit=8, parity='N', stop=1):
+        self.ser = serial.Serial(port, baudrate, timeout=timeout, bytesize=bit, parity=parity, stopbits=stop)
+        self.parameters = {}
+        with open('../cpa_parameters.json', 'r') as f:
+            self.parameters = json.load(f)
+        if not self.ser.is_open:
+            self.ser.open()
+
+        # self.open()
+
+    def init_parameters(self):
+        print("Initializing...")
+        for key in self.parameters.keys():
+            if key == "DLY":
+                for channel in "ABCDEF":
+                    self.get_parameter(key, channel)
+            else:
+                self.get_parameter(key)
+        print("All parameters updated.")
+
+    def cmd(self, command: str, sleep=0.1):
+        self.ser.write((command + '\r').encode('ascii'))
+        response = self.ser.readline().decode().strip()
+        time.sleep(sleep)
+        return handle_str(response)
+        
+    def get_parameter(self, param_name: str, channel=''):
+        rc = self.cmd((param_name+' '+channel).strip())
+        if rc == '!':
+            print(f"Parameter {param_name} channel {channel} read error.")
+            return
+        if param_name == "DLY":
+            self.parameters[param_name][ord(channel)-ord('A')] = rc
+        else:
+            self.parameters[param_name] = rc
+        print(f"Parameter {param_name} channel {channel} is {rc}")
+
+    def set_parameter(self, param_name: str, channel='', value=None):
+        rc = self.cmd((param_name+' '+channel).strip()+','+str(value))
+        if rc == '!':
+            print(f"Parameter {param_name} channel {channel} set error.")
+            return
+        value = handle_str(str(value))
+        if param_name in "DLY":
+            self.parameters[param_name][ord(channel)-ord('A')] = float(value/10)
+        else:
+            self.parameters[param_name] = rc
+        print(f"Parameter {param_name} channel {channel} set to {self.parameters[param_name]}")
+
+    def open(self):
+        if self.get_parameter(param_name="232") == "ON":
+            print("CPA controller is already in remote control mode.")
+        else:
+            self.set_parameter(param_name="232", value=1)
+            print("CPA controller is now in remote control mode.")
+        self.init_parameters()
+
+    def close(self):
+        if self.get_parameter(param_name="232") == "OFF":
+            print("CPA controller is already in local control mode.")
+        else:
+            self.set_parameter(param_name="232", value=0)
+            print("CPA controller is now in local control mode.")
+        with open('cpa_parameters.json', 'w') as f:
+            json.dump(self.parameters, f, indent=4)
+
 comport = 'COM14'
 
 cpa = CPA(port=comport)
 
 if __name__ == "__main__":
 
-    cpa.set_current_safely(laser=2, current=0)
-    cpa.set_parameter(param_name="SHU", value='0')
+    # start_time = time.time()
+    # cpa.ser.write("CUR 0000\r".encode("ascii"))
+    # cpa.ser.readline()
+    # end_time = time.time()
+    # print(end_time-start_time)
+
+    start_time = time.time()
+    cpa.set_parameter(param_name="DLY", channel='B', value="0008100")
+    print(cpa.parameters["DLY"])
+    end_time = time.time()
+    print(end_time-start_time)
    
