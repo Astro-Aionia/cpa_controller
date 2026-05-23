@@ -37,10 +37,7 @@ if __name__ == "__main__":
 
     import time
     start_time = time.time()
-    # rc = remote.apiget(command="/laser_on/")
-    # rc = remote.apiget(command="/set_current/1/0005")
-    rc = remote.apiget(command="/settings/DLY/A/")
-    # rc = remote.apiget(command="/laser_on/")
+    rc = remote.apiput("/settings/232/", value='1')
     end_time = time.time()
     print(end_time-start_time)
 

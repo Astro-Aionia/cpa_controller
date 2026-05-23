@@ -1,13 +1,17 @@
+import os
 import time
 import serial
 import json
 from functools import wraps
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARAMS_PATH = os.path.abspath(os.path.join(BASE_DIR, '..', 'cpa_parameters.json'))
+
 class SafeCPA:
     def __init__(self, port, baudrate=9600, timeout=1, bit=8, parity='N', stop=1):
         self.ser = serial.Serial(port, baudrate, timeout=timeout, bytesize=bit, parity=parity, stopbits=stop)
         self.parameters = {}
-        with open('../cpa_parameters.json', 'r') as f:
+        with open(PARAMS_PATH, 'r') as f:
             self.parameters = json.load(f)
         if not self.ser.is_open:
             self.ser.open()
@@ -191,12 +195,12 @@ class CPA:
     def __init__(self, port, baudrate=9600, timeout=1, bit=8, parity='N', stop=1):
         self.ser = serial.Serial(port, baudrate, timeout=timeout, bytesize=bit, parity=parity, stopbits=stop)
         self.parameters = {}
-        with open('../cpa_parameters.json', 'r') as f:
+        with open(PARAMS_PATH, 'r') as f:
             self.parameters = json.load(f)
         if not self.ser.is_open:
             self.ser.open()
 
-        # self.open()
+        #self.open()
 
     def init_parameters(self):
         print("Initializing...")
@@ -212,6 +216,7 @@ class CPA:
         self.ser.write((command + '\r').encode('ascii'))
         response = self.ser.readline().decode().strip()
         time.sleep(sleep)
+        self.save_parameters()
         return handle_str(response)
         
     def get_parameter(self, param_name: str, channel=''):
@@ -226,7 +231,10 @@ class CPA:
         print(f"Parameter {param_name} channel {channel} is {rc}")
 
     def set_parameter(self, param_name: str, channel='', value=None):
-        rc = self.cmd((param_name+' '+channel).strip()+','+str(value))
+        if channel != '':
+            rc = self.cmd((param_name+' '+channel)+','+str(value))
+        else:
+            rc = self.cmd((param_name)+' '+str(value))
         if rc == '!':
             print(f"Parameter {param_name} channel {channel} set error.")
             return
@@ -234,7 +242,7 @@ class CPA:
         if param_name in "DLY":
             self.parameters[param_name][ord(channel)-ord('A')] = float(value/10)
         else:
-            self.parameters[param_name] = rc
+            self.parameters[param_name] = value
         print(f"Parameter {param_name} channel {channel} set to {self.parameters[param_name]}")
 
     def open(self):
@@ -251,24 +259,12 @@ class CPA:
         else:
             self.set_parameter(param_name="232", value=0)
             print("CPA controller is now in local control mode.")
-        with open('cpa_parameters.json', 'w') as f:
+        self.save_parameters()
+
+    def save_parameters(self):
+        with open(PARAMS_PATH, 'w') as f:
             json.dump(self.parameters, f, indent=4)
 
 comport = 'COM14'
 
 cpa = CPA(port=comport)
-
-if __name__ == "__main__":
-
-    # start_time = time.time()
-    # cpa.ser.write("CUR 0000\r".encode("ascii"))
-    # cpa.ser.readline()
-    # end_time = time.time()
-    # print(end_time-start_time)
-
-    start_time = time.time()
-    cpa.set_parameter(param_name="DLY", channel='B', value="0008100")
-    print(cpa.parameters["DLY"])
-    end_time = time.time()
-    print(end_time-start_time)
-   

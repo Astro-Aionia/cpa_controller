@@ -1,80 +1,17 @@
+import sys
+import time
+from functools import wraps
+
 from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from ui.channel import Ui_Channel
 from ui.mainwindow import Ui_MainWindow
 
-from remote import RemoteCPA
+from components.remote import RemoteCPA
+from components.labconfig import LabConfig
+from components.utils import ignore_connection_error
+from components.qutils import ThreadManager
 
-import sys
-from functools import wraps
-import json
-import requests
-
-class LabConfig:
-    def __init__(self):
-        self.config = dict()
-        with open("ui_parameters.json") as f:
-            self.config = json.load(f)
-
-    def update_config(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            with open("ui_parameters.json", 'w') as f:
-                json.dump(self.config, f, indent=4)
-        return wrapper
-
-def ignore_connection_error(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            res = func(*args, **kwargs)
-            return res
-        except requests.exceptions.ConnectionError:
-            print(f"Connection error in {func.__name__}, ignoring.")
-            return None
-    return wrapper
-
-class AsyncExecutor(QObject):
-    started = pyqtSignal()
-    finished = pyqtSignal(object)
-    progress = pyqtSignal(int)
-    error = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.thread = QThread()
-        self.moveToThread(self.thread)
-        self.thread.start()
-
-    @pyqtSlot()
-    def execute(self, func, *args, **kwargs):
-        try:
-            self.started.emit()
-            result = func(*args, **kwargs)
-            self.finished.emit(result)
-        except Exception as e:
-            self.error.emit(str(e))
-
-def async_execute(on_started=None,on_finished=None, on_error=None, on_progress=None):
-    def decprator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            executor = AsyncExecutor()
-
-            if on_started:
-                executor.started.connect(on_started)
-            if on_finished:
-                executor.finished.connect(on_finished)
-            if on_progress:
-                executor.progress.connect(on_progress)
-
-            executor.execute(func, args, kwargs)
-            return executor
-        
-        return wrapper
-    return decprator
 
 class DelayChannel(QWidget, Ui_Channel):
     def __init__(self, channel: str, lcfg: LabConfig, remote: RemoteCPA):
@@ -86,7 +23,9 @@ class DelayChannel(QWidget, Ui_Channel):
         self.channel_config = self.lcfg.config["Puckel Cell"][self.channel]
         update_config = self.lcfg.update_config
         self.remote = remote
+        self.thread_manager = ThreadManager() 
 
+        # setup ui
         if self.channel_config["Enabled"]:
                 self.channelSwitchButton.setText("Disable")
                 self.channelLabel.setStyleSheet("color: green;")
@@ -97,76 +36,71 @@ class DelayChannel(QWidget, Ui_Channel):
         self.delayEdit.setText(str(self.channel_config["Value"]))
         self.delayIntervalEdit.setText(str(self.channel_config["Increment"]))
 
-        @ignore_connection_error
-        @update_config
-        @self.update_ui
-        def switch_channel(button_status: bool):
-            if self.channel_config["Enabled"]:
-                self.remote.apiput(f"/settings/RUN/{self.channel}/", value="1")
-                self.channel_config["Enabled"] = False
-            else:
-                self.remote.apiput(f"/settings/RUN/{self.channel}/", value="0")
-                self.channel_config["Enabled"] = True
+        # decorate
+        self.switch_channel = update_config(self.switch_channel)
+        self.switch_channel = ignore_connection_error(self.switch_channel)
+        self.channelSwitchButton.clicked.connect(self.on_switch_channel)
 
-        self.channelSwitchButton.clicked.connect(switch_channel)
+        self.set_delay = update_config(self.set_delay)
+        self.set_delay = ignore_connection_error(self.set_delay)
+        self.delaySetButton.clicked.connect(self.on_set_delay)
 
-        @ignore_connection_error
-        @update_config
-        @self.update_ui
-        def set_delay(button_status: bool):
-            delay_to_set = float(self.delayEdit.text())
-            str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
-            # rc = self.remote.apiget(f"/DLY/{self.channel}/")
-            self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
+        self.delayIntervalEdit.editingFinished.connect(self.set_delay_increment)
 
-        self.delaySetButton.clicked.connect(set_delay)
+        self.delayIncreaseButton.clicked.connect(self.on_increase_delay)
+        self.delayDecreaseButton.clicked.connect(self.on_decrease_delay)
 
-        @self.update_ui
-        def set_delay_increment(lineEdit_status=None):
-            delay_increment_to_set = float(self.delayIntervalEdit.text())
-            self.channel_config["Increment"] = delay_increment_to_set
 
-        self.delayIntervalEdit.editingFinished.connect(set_delay_increment)
+    def switch_channel(self, signals=None):
+        if self.channel_config["Enabled"]:
+            self.remote.apiput(f"/settings/RUN/{self.channel}/", value="1")
+            self.channel_config["Enabled"] = False
+        else:
+            self.remote.apiput(f"/settings/RUN/{self.channel}/", value="0")
+            self.channel_config["Enabled"] = True
 
-        @ignore_connection_error
-        @update_config
-        @self.update_ui
-        def delay_increase(button_status: bool):
-            delay_to_set = self.channel_config["Value"] + self.channel_config["Increment"]
-            str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
-            # rc = self.remote.apiget(f"/DLY/{self.channel}/")
-            self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
+    def on_switch_channel(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.switch_channel)
+        signals.finished.connect(lambda: self.update_ui())
 
-        self.delayIncreaseButton.clicked.connect(delay_increase)
 
-        @ignore_connection_error
-        @update_config
-        @self.update_ui
-        def delay_decrease(button_status: bool):
-            delay_to_set = self.channel_config["Value"] - self.channel_config["Increment"]
-            str_to_sent = str(int(delay_to_set*10)).zfill(7)
-            rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
-            # rc = self.remote.apiget(f"/DLY/{self.channel}/")
-            self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
-            
-        self.delayDecreaseButton.clicked.connect(delay_decrease)
+    def set_delay(self, signals=None, value=0.0):
+        str_to_sent = str(int(value*10)).zfill(7)
+        rc = self.remote.apiput(f"/settings/DLY/{self.channel}/", str_to_sent)
+        # rc = self.remote.apiget(f"/DLY/{self.channel}/")
+        self.channel_config["Value"] = rc["DLY"][ord(self.channel) - ord('A')]
 
-    def update_ui(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            if self.channel_config["Enabled"]:
-                self.channelSwitchButton.setText("Disable")
-                self.channelLabel.setStyleSheet("color: green;")
-            else:
-                self.channelSwitchButton.setText("Enable")
-                self.channelLabel.setStyleSheet("color: black;")
+    def on_set_delay(self, button_status: bool):
+        value = float(self.delayEdit.text())
+        signals = self.thread_manager.start_task(self.set_delay, value=value)
+        signals.finished.connect(lambda: self.update_ui())
 
-            self.delayEdit.setText(str(self.channel_config["Value"]))
-            self.delayIntervalEdit.setText(str(self.channel_config["Increment"]))
-        return wrapper
+    def set_delay_increment(self, lineEdit_status=None):
+        delay_increment_to_set = float(self.delayIntervalEdit.text())
+        self.channel_config["Increment"] = delay_increment_to_set
+
+    def on_increase_delay(self, button_status: bool):
+        value = self.channel_config["Value"] + self.channel_config["Increment"]
+        signals = self.thread_manager.start_task(self.set_delay, value=value)
+        signals.finished.connect(lambda: self.update_ui())
+
+    def on_decrease_delay(self, button_status: bool):
+        value = self.channel_config["Value"] - self.channel_config["Increment"]
+        signals = self.thread_manager.start_task(self.set_delay, value=value)
+        signals.finished.connect(lambda: self.update_ui())
+
+
+    def update_ui(self, ):
+        if self.channel_config["Enabled"]:
+            self.channelSwitchButton.setText("Disable")
+            self.channelLabel.setStyleSheet("color: green;")
+        else:
+            self.channelSwitchButton.setText("Enable")
+            self.channelLabel.setStyleSheet("color: black;")
+
+        self.delayEdit.setText(str(self.channel_config["Value"]))
+        self.delayIntervalEdit.setText(str(self.channel_config["Increment"]))
+
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, lcfg: LabConfig):
@@ -175,7 +109,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lcfg = lcfg
         self.remote = RemoteCPA(host=self.lcfg.config["Host"], port=self.lcfg.config["Port"])
         update_config = self.lcfg.update_config
-        self.update_ui = self.lcfg.update_config(self.update_ui)
+        self.thread_manager = ThreadManager()
+
         self.channels = [None, None, None, None, None, None]
 
         # setup channels
@@ -197,7 +132,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.lcfg.config["PShutter"]:
             self.PShutterButton.setStyleSheet("color: green;")
         else:
-            self.EShutterButton.setStyleSheet("color: black;")
+            self.PShutterButton.setStyleSheet("color: black;")
         self.CAREdit.setText(str(self.lcfg.config["Current A"]["Read"]))
         self.CASEdit.setText(str(self.lcfg.config["Current A"]["Set"]))
         self.CBREdit.setText(str(self.lcfg.config["Current B"]["Read"]))
@@ -207,120 +142,218 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.TBREdit.setText(str(self.lcfg.config["Temperature B"]["Read"]))
         self.TBSEdit.setText(str(self.lcfg.config["Temperature B"]["Set"]))
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def laser_switch(button_status: bool):
-            if self.lcfg.config["Laser"]:
-                self.remote.apiput("/settings/LSR/0")
-                self.lcfg.config["Laser"] = False
+        # decorate
+        self.laser_switch = update_config(self.laser_switch)
+        self.laser_switch= ignore_connection_error(self.laser_switch)
+        self.laserButton.clicked.connect(self.on_laser_switch)
+
+        self.e_shutter_switch = update_config(self.e_shutter_switch)
+        self.e_shutter_switch = ignore_connection_error(self.e_shutter_switch)
+        self.EShutterButton.clicked.connect(self.on_e_shutter_switch)
+
+        self.p_shutter_switch = update_config(self.p_shutter_switch)
+        self.p_shutter_switch = ignore_connection_error(self.p_shutter_switch)
+        self.PShutterButton.clicked.connect(self.on_p_shutter_switch)
+
+        self.read_current_A = update_config(self.read_current_A)
+        self.read_current_A = ignore_connection_error(self.read_current_A)
+        self.CARButton.clicked.connect(self.on_read_current_A)
+
+        self.set_current_A = update_config(self.set_current_A)
+        self.set_current_A = ignore_connection_error(self.set_current_A)
+        self.CASButton.clicked.connect(self.on_set_current_A)
+
+        self.read_current_B = update_config(self.read_current_B)
+        self.read_current_B = ignore_connection_error(self.read_current_B)
+        self.CBRButton.clicked.connect(self.on_read_current_B)
+
+        self.set_current_B = update_config(self.set_current_B)
+        self.set_current_B = ignore_connection_error(self.set_current_B)
+        self.CBSButton.clicked.connect(self.on_set_current_B)
+
+        self.read_temperature_A = update_config(self.read_temperature_A)
+        self.read_temperature_A = ignore_connection_error(self.read_temperature_A)
+        self.TARButton.clicked.connect(self.on_read_temperature_A)
+
+        self.set_temperature_A = update_config(self.set_temperature_A)
+        self.set_temperature_A = ignore_connection_error(self.set_temperature_A)
+        self.TASButton.clicked.connect(self.on_set_temperature_A)
+
+        self.read_temperature_B = update_config(self.read_temperature_B)
+        self.read_temperature_B = ignore_connection_error(self.read_temperature_B)
+        self.TBRButton.clicked.connect(self.on_read_temperature_B)
+        
+        self.set_temperature_B = update_config(self.set_temperature_B)
+        self.set_temperature_B = ignore_connection_error(self.set_temperature_B)
+        self.TBSButton.clicked.connect(self.on_set_temperature_B)
+
+
+    def laser_switch(self, signals=None):
+        if self.lcfg.config["Laser"]:
+            self.remote.apiput("/settings/232/", value='0')
+            self.remote.apiput("/settings/232/", value='1')
+            self.lcfg.config["Laser"] = False
+        else:
+            self.remote.apiput("/settings/LSR/", value='1')
+            self.lcfg.config["Laser"] = True
+
+    def on_laser_switch(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.laser_switch)
+        signals.finished.connect(lambda: self.update_ui())
+    
+
+    def e_shutter_switch(self, signals=None):
+        if self.lcfg.config["EShutter"]:
+            self.remote.apiput("/settings/SHU/", value='0')
+            self.lcfg.config["EShutter"] = False
+        else:
+            current_A = self.lcfg.config["Current A"]["Set"]
+            current_B = self.lcfg.config["Current B"]["Set"]
+            # first, set current to 0
+            self.set_current_A(value=0.0)
+            self.set_current_B(value=0.0)
+            # then, open E shutter
+            self.remote.apiput("/settings/SHU/", value='1')
+            self.lcfg.config["EShutter"] = True
+            # finally, set current back to original value
+            self.set_current_A_safely(value=current_A)
+            self.set_current_B_safely(value=current_B)
+
+    def on_e_shutter_switch(self, button_status: bool):
+        signals= self.thread_manager.start_task(self.e_shutter_switch)
+        signals.finished.connect(lambda: self.update_ui())
+
+
+    def p_shutter_switch(self, signals=None):
+        if self.lcfg.config["PShutter"]:
+            self.remote.apiput("/settings/TSH/", value='0')
+            self.lcfg.config["PShutter"] = False
+        else:
+            self.remote.apiput("/settings/TSH/", value='1')
+            self.lcfg.config["PShutter"] = True
+
+    def on_p_shutter_switch(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.p_shutter_switch)
+        signals.finished.connect(lambda: self.update_ui())
+
+
+    def read_current_A(self, signals=None):
+        rc = self.remote.apiget("/settings/CUR/")
+        self.lcfg.config["Current A"]["Read"] = float(rc["CUR"])/10
+
+    def on_read_current_A(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.read_current_A)
+        signals.finished.connect(lambda: self.update_ui())
+
+
+    def read_current_B(self, signals=None):
+        rc = self.remote.apiget("/settings/C2R/")
+        self.lcfg.config["Current B"]["Read"] = float(rc["C2R"])/10
+
+    def on_read_current_B(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.read_current_B)
+        signals.finished.connect(lambda: self.update_ui())
+
+
+    def set_current_A(self, signals=None, value=0.0):
+        str_to_sent = str(int(value*10))
+        # rc = self.remote.apiput("/settings/CUR/", value=str_to_sent)
+        self.remote.apiput("/settings/CUR/", value=str_to_sent)
+        rc = self.remote.apiget("/settings/CUS/")
+        self.lcfg.config["Current A"]["Set"] = float(rc["CUS"])/10
+
+    def set_current_A_safely(self, signals=None, value=0.0):
+        if not self.lcfg.config["EShutter"]:
+            self.set_current_A(value=value)
+        else:
+            if value <= self.lcfg.config["Current A"]["Set"]:
+                self.set_current_A(value=value)
             else:
-                self.remote.apiput("/settings/LSR/1")
-                self.lcfg.config["Laser"] = True
-            
-        self.laserButton.clicked.connect(laser_switch)
+                self.read_current_A()
+                while self.lcfg.config["Current A"]["Read"] < value:
+                    if  self.lcfg.config["Current A"]["Read"] < 1.0:
+                        self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.2)
+                    else:        
+                        self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.1)
+                    time.sleep(3)
+                    self.read_current_A()
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def e_shutter_switch(button_status: bool):
-            if self.lcfg.config["EShutter"]:
-                self.remote.apiput("/settings/SHU/", value='0')
-                self.lcfg.config["EShutter"] = False
+    def on_set_current_A(self, button_status: bool):
+        value = float(self.CASEdit.text())
+        signals = self.thread_manager.start_task(self.set_current_A_safely, value=value)
+        signals.finished.connect(lambda: self.update_ui())
+    
+
+    def set_current_B(self, signals=None, value=0.0):
+        str_to_sent = str(int(value*10))
+        # rc = self.remote.apiput("/settings/C2R/", value=str_to_sent)
+        self.remote.apiput("/settings/C2R/", value=str_to_sent)
+        rc = self.remote.apiget("/settings/C2S")
+        self.lcfg.config["Current B"]["Set"] = float(rc["C2S"])/10
+
+    def set_current_B_safely(self, signals=None, value=0.0):
+        if not self.lcfg.config["EShutter"]:
+            self.set_current_B(value=value)
+        else:
+            if value <= self.lcfg.config["Current B"]["Set"]:
+                self.set_current_B(value=value)
             else:
-                # self.remote.apiput("/settings/SHU/", value='1')
-                self.remote.apiget("/laser_on/")
-                self.lcfg.config["EShutter"] = True
+                self.read_current_B()
+                while self.lcfg.config["Current B"]["Read"] < value:
+                    if self.lcfg.config["Current B"]["Read"] < 1.0:
+                        self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.2)
+                    else:
+                        self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.1)
+                    time.sleep(3)
+                    self.read_current_B()
 
-        self.EShutterButton.clicked.connect(e_shutter_switch)
+    def on_set_current_B(self, button_status: bool):
+        value = float(self.CBSEdit.text())
+        signals = self.thread_manager.start_task(self.set_current_B_safely, value=value)
+        signals.finished.connect(lambda: self.update_ui())
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def p_shutter_switch(button_status: bool):
-            if self.lcfg.config["PShutter"]:
-                self.remote.apiput("/settings/TSH/", value='0')
-                self.lcfg.config["PShutter"] = False
-            else:
-                self.remote.apiput("/settings/TSH/", value='1')
-                self.lcfg.config["PShutter"] = True
 
-        self.PShutterButton.clicked.connect(p_shutter_switch)
+    def read_temperature_A(self, signals=None):
+        rc = self.remote.apiget("/settings/SHA/")
+        self.lcfg.config["Temperature A"]["Read"] = rc["SHA"]
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def read_current_A(button_status: bool):
-            rc = self.remote.apiget("/settings/CUR/")
-            self.lcfg.config["Current A"]["Read"] = rc["CUR"]
+    def on_read_temperature_A(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.read_temperature_A)
+        signals.finished.connect(lambda: self.update_ui())
+        
 
-        self.CARButton.clicked.connect(read_current_A)
+    def set_temperature_A(self, signals=None, value=0.0):
+        str_to_sent = str(value*10)
+        rc = self.remote.apiput("/settings/SHA/", value=str_to_sent)
+        # rc = self.remote.apiget("/SHA")
+        self.lcfg.config["Temperature A"]["Set"] = rc["SHA"]
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def set_current_A(button_status: bool):
-            value_to_set = float(self.CASEdit.text())
-            str_to_sent = str(int(value_to_set*10))
-            # rc = self.remote.apiput("/settings/CUR/", value=str_to_sent)
-            self.remote.apiget(f"/set_current/1/{str_to_sent}")
-            rc = self.remote.apiget("/settings/CUS/")
-            self.lcfg.config["Current A"]["Set"] = float(rc["CUS"])/10
+    def on_set_temperature_A(self, button_status: bool):
+        value = float(self.TASEdit.text())
+        signals = self.thread_manager.start_task(self.set_temperature_A, value=value)
+        signals.finished.connect(lambda: self.update_ui())
 
-        self.CASButton.clicked.connect(set_current_A)
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def read_current_B(button_status: bool):
-            rc = self.remote.apiget("/settings/C2R/")
-            self.lcfg.config["Current B"]["Read"] = rc["C2R"]
+    def read_temperature_B(self, signals=None):
+        rc = self.remote.apiget("/settings/SHB/")
+        self.lcfg.config["Temperature B"]["Read"] = rc["SHB"]
 
-        self.CBRButton.clicked.connect(read_current_B)
+    def on_read_temperature_B(self, button_status: bool):
+        signals = self.thread_manager.start_task(self.read_temperature_B)
+        signals.finished.connect(lambda: self.update_ui())
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def set_current_B(button_status: bool):
-            value_to_set = float(self.CBSEdit.text())
-            str_to_sent = str(int(value_to_set*10))
-            # rc = self.remote.apiput("/settings/C2R/", value=str_to_sent)
-            self.remote.apiget(f"/set_current/1/{str_to_sent}")
-            rc = self.remote.apiget("/settings/C2S")
-            self.lcfg.config["Current B"]["Set"] = float(rc["C2S"])/10
 
-        self.CBSButton.clicked.connect(set_current_B)
+    def set_temperature_B(self, signals=None, value=0.0):
+        str_to_sent = str(value*10)
+        rc = self.remote.apiput("/settings/SHB/", value=str_to_sent)
+        # rc = self.remote.apiget("/SHB")
+        self.lcfg.config["Temperature B"]["Set"] = rc["SHB"]
 
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def read_temperature_A(button_status: bool = False):
-            rc = self.remote.apiget("/settings/SHA/")
-            self.lcfg.config["Temperature A"]["Read"] = rc["SHA"]
+    def on_set_temperature_B(self, button_status: bool):
+        value = float(self.TBSEdit.text())
+        signals = self.thread_manager.start_task(self.set_temperature_B, value=value)
+        signals.finished.connect(lambda: self.update_ui())
 
-        self.TARButton.clicked.connect(read_temperature_A)
-
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def set_temperature_A(button_status: bool = False):
-            value_to_set = float(self.CASEdit.text())
-            str_to_sent = str(value_to_set*10)
-            rc = self.remote.apiput("/settings/SHA/", value=str_to_sent)
-            # rc = self.remote.apiget("/SHA")
-            self.lcfg.config["Temperature A"]["Set"] = rc["SHA"]
-
-        self.TASButton.clicked.connect(set_temperature_A)
-
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def read_temperature_B(button_status: bool):
-            rc = self.remote.apiget("/settings/SHB/")
-            self.lcfg.config["Temperature B"]["Read"] = rc["SHB"]
-
-        self.TBRButton.clicked.connect(read_temperature_B)
-
-        @async_execute(on_finished=lambda: self.update_ui)
-        @ignore_connection_error
-        def set_temperature_B(button_status: bool):
-            value_to_set = float(self.CBSEdit.text())
-            str_to_sent = str(value_to_set*10)
-            rc = self.remote.apiput("/settings/SHB/", value=str_to_sent)
-            # rc = self.remote.apiget("/SHB")
-            self.lcfg.config["Temperature B"]["Set"] = rc["SHB"]
-
-        self.TBSButton.clicked.connect(set_temperature_B)
 
     def update_ui(self):
         if self.lcfg.config["Laser"]:

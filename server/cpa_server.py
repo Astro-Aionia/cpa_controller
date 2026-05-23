@@ -99,3 +99,13 @@ def laser_on_safely():
     res['SHU'] = cpa.parameters["SHU"]
     res = json.dumps(res)
     return Response(res, status=200, mimetype='application/json')
+
+@app.route("/save/")
+def save_parameters():
+    cpa.save_parameters()
+    res = dict()
+    res['success'] = True
+    res['message'] = "Parameters saved to disk successfully."
+    res['version'] = cpa.parameters["VER"]
+    res = json.dumps(res)
+    return Response(res, status=200, mimetype='application/json')

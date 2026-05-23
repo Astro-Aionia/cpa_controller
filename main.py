@@ -1,39 +1,14 @@
+import sys
+from functools import wraps
+
 from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow
 from ui.channel import Ui_Channel
 from ui.mainwindow import Ui_MainWindow
 
-from remote import RemoteCPA
-
-import sys
-from functools import wraps
-import json
-import requests
-
-class LabConfig:
-    def __init__(self):
-        self.config = dict()
-        with open("ui_parameters.json") as f:
-            self.config = json.load(f)
-
-    def update_config(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
-            with open("ui_parameters.json", 'w') as f:
-                json.dump(self.config, f, indent=4)
-        return wrapper
-
-def ignore_connection_error(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            res = func(*args, **kwargs)
-            return res
-        except requests.exceptions.ConnectionError:
-            print(f"Connection error in {func.__name__}, ignoring.")
-            return None
-    return wrapper
+from components.remote import RemoteCPA
+from components.labconfig import LabConfig
+from components.utils import ignore_connection_error
 
 class DelayChannel(QWidget, Ui_Channel):
     def __init__(self, channel: str, lcfg: LabConfig, remote: RemoteCPA):
