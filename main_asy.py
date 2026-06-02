@@ -271,10 +271,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 self.read_current_A()
                 while self.lcfg.config["Current A"]["Read"] < value:
-                    if  self.lcfg.config["Current A"]["Read"] < 1.0:
-                        self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.2)
-                    else:        
-                        self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.1)
+                    # if  self.lcfg.config["Current A"]["Read"] < 9.0:
+                    #     self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.2)
+                    # else:        
+                    #     self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.1)
+                    self.set_current_A(value=self.lcfg.config["Current A"]["Read"]+0.2)
                     time.sleep(3)
                     self.read_current_A()
 
@@ -300,10 +301,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 self.read_current_B()
                 while self.lcfg.config["Current B"]["Read"] < value:
-                    if self.lcfg.config["Current B"]["Read"] < 1.0:
-                        self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.2)
-                    else:
-                        self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.1)
+                    # if self.lcfg.config["Current B"]["Read"] < 9.0:
+                    #     self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.2)
+                    # else:        
+                    #     self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.1)
+                    self.set_current_B(value=self.lcfg.config["Current B"]["Read"]+0.2)
                     time.sleep(3)
                     self.read_current_B()
 
@@ -323,10 +325,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
 
     def set_temperature_A(self, signals=None, value=0.0):
-        str_to_sent = str(value*10)
+        str_to_sent = str(int(value*100)).zfill(4)
         rc = self.remote.apiput("/settings/SHA/", value=str_to_sent)
         # rc = self.remote.apiget("/SHA")
-        self.lcfg.config["Temperature A"]["Set"] = rc["SHA"]
+        self.lcfg.config["Temperature A"]["Set"] = float(rc["SHA"])/100
 
     def on_set_temperature_A(self, button_status: bool):
         value = float(self.TASEdit.text())
@@ -344,10 +346,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
     def set_temperature_B(self, signals=None, value=0.0):
-        str_to_sent = str(value*10)
+        str_to_sent = str(int(value*100)).zfill(4)
         rc = self.remote.apiput("/settings/SHB/", value=str_to_sent)
         # rc = self.remote.apiget("/SHB")
-        self.lcfg.config["Temperature B"]["Set"] = rc["SHB"]
+        self.lcfg.config["Temperature B"]["Set"] = float(rc["SHB"])/100
 
     def on_set_temperature_B(self, button_status: bool):
         value = float(self.TBSEdit.text())

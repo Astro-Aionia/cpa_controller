@@ -200,7 +200,7 @@ class CPA:
         if not self.ser.is_open:
             self.ser.open()
 
-        #self.open()
+        self.open()
 
     def init_parameters(self):
         print("Initializing...")
