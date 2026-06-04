@@ -1,9 +1,10 @@
 import sys
+import ctypes
 import time
-from functools import wraps
 
 from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow
+from PyQt6.QtGui import QIcon
 from ui.channel import Ui_Channel
 from ui.mainwindow import Ui_MainWindow
 
@@ -380,9 +381,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.TBSEdit.setText(str(self.lcfg.config["Temperature B"]["Set"]))
 
 
+appid = "zhenggroup.cpa_controller.01"
+ct = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
 
 lcfg = LabConfig()
 cpa_controller = QApplication(sys.argv)
 mainWindow = MainWindow(lcfg= lcfg)
+mainWindow.setWindowIcon(QIcon('icon.ico'))
 mainWindow.show()
 sys.exit(cpa_controller.exec())
